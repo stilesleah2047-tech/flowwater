@@ -1,0 +1,59 @@
+services:
+  # Single-node replica set — Change Streams (used by the Super Admin live
+  # feed) require MongoDB to be a replica set, even a one-node one. A plain
+  # `mongo` image without --replSet will start fine but the server's
+  # Transaction.watch() call will throw at boot (logged, not fatal — see
+  # server/src/sockets/index.ts).
+  mongo:
+    image: mongo:7
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh --quiet || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # One-shot: initializes the replica set on first boot. Exits after running.
+  mongo-init:
+    image: mongo:7
+    depends_on:
+      mongo:
+        condition: service_healthy
+    entrypoint: >
+      mongosh --host mongo:27017 --eval
+      "try { rs.status() } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongo:27017'}]}) }"
+    restart: "no"
+
+  server:
+    build: ./server
+    ports:
+      - "4000:4000"
+    env_file:
+      - ./server/.env
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:4000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  web:
+    build: ./web
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./web/.env
+    depends_on:
+      - server
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
