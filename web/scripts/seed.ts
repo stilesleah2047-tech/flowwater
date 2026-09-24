@@ -1,4 +1,12 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+import path from "path";
+// Plain `dotenv` only auto-loads a file literally named `.env` — it does
+// NOT know about Next.js's `.env.local` convention. This script runs
+// standalone via tsx (outside Next.js's own env loading), so it has to
+// point dotenv at `.env.local` explicitly, or every var here silently
+// stays undefined even when the file exists and is filled in correctly.
+dotenv.config({ path: path.resolve(__dirname, "../.env.local") });
+
 import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
 import { connectDb } from "../src/lib/server/db";
