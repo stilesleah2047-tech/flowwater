@@ -23,18 +23,27 @@ const ACCESS_COOKIE = "access_token";
 const REFRESH_COOKIE = "refresh_token";
 
 const isProd = env.NODE_ENV === "production";
+// SameSite=Lax cookies are NOT sent on cross-site fetch() calls — only on
+// top-level navigations. Since the frontend (Vercel) and this API
+// (Render) live on different domains in production, the session cookie
+// must be SameSite=None to survive the cross-site request at all. None
+// requires Secure, which is already true in production (HTTPS). Locally,
+// frontend and API are both http://localhost on the same site, so Lax is
+// fine there and avoids needing HTTPS in dev.
+const crossSiteCookieOpts = isProd
+  ? { secure: true, sameSite: "none" as const }
+  : { secure: false, sameSite: "lax" as const };
+
 const accessCookieOpts = {
   httpOnly: true,
-  secure: isProd,
-  sameSite: "lax" as const,
+  ...crossSiteCookieOpts,
   maxAge: 15 * 60 * 1000,
   path: "/",
 };
 function refreshCookieOpts() {
   return {
     httpOnly: true,
-    secure: isProd,
-    sameSite: "lax" as const,
+    ...crossSiteCookieOpts,
     maxAge: refreshTtlMs(),
     path: "/api/auth",
   };

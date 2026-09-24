@@ -1,7 +1,5 @@
 import { getDeviceId } from "@/lib/deviceId";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-
 export class ApiError extends Error {
   status: number;
   body: any;
@@ -16,7 +14,7 @@ let refreshInFlight: Promise<boolean> | null = null;
 
 async function tryRefresh(): Promise<boolean> {
   if (!refreshInFlight) {
-    refreshInFlight = fetch(API_URL + "/api/auth/refresh", {
+    refreshInFlight = fetch("/api/auth/refresh", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -30,19 +28,12 @@ async function tryRefresh(): Promise<boolean> {
   return refreshInFlight;
 }
 
-/**
- * Thin fetch wrapper: always sends the httpOnly session cookies
- * (credentials: "include"), and on a 401 makes exactly one attempt to
- * silently refresh the access token before retrying — this is what keeps
- * a delivery worker's session alive through a full shift without
- * re-entering their PIN, per the "persistent sessions" requirement.
- */
 export async function apiFetch<T = any>(
   path: string,
   options: RequestInit = {},
   _retried = false
 ): Promise<T> {
-  const res = await fetch(API_URL + path, {
+  const res = await fetch(path, {
     ...options,
     credentials: "include",
     headers: {
@@ -65,8 +56,4 @@ export async function apiFetch<T = any>(
     throw new ApiError(body?.error ?? "Request failed", res.status, body);
   }
   return body as T;
-}
-
-export function apiUrl(): string {
-  return API_URL;
 }

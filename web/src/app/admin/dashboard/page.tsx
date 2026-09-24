@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch, ApiError } from "@/lib/api";
-import { useTransactionFeed } from "@/lib/socket";
-import { AuthUser, Branch, DashboardSummary, ReconciliationRow, Transaction } from "@/lib/types";
+import { useTransactionFeed } from "@/lib/pollingFeed";
+import { AuthUser, Branch, DashboardSummary, ReconciliationRow } from "@/lib/types";
 import { useToast } from "@/components/ui/Toast";
 import { SkeletonCardGrid, SkeletonTable } from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
@@ -26,10 +26,9 @@ export default function AdminDashboardPage() {
   const [selectedBranchId, setSelectedBranchId] = useState<string>("ALL");
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [reconciliation, setReconciliation] = useState<ReconciliationRow[]>([]);
-  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const { events: liveEvents, connected } = useTransactionFeed(50);
+  const { events: feedTransactions, connected } = useTransactionFeed(selectedBranchId, 50);
 
   useEffect(() => {
     (async () => {
@@ -75,16 +74,12 @@ export default function AdminDashboardPage() {
     setLoading(true);
     try {
       const branchParam = selectedBranchId === "ALL" ? "" : "?branchId=" + selectedBranchId;
-      const [summaryRes, reconRes, txnRes] = await Promise.all([
+      const [summaryRes, reconRes] = await Promise.all([
         apiFetch<DashboardSummary>("/api/dashboard/summary" + branchParam),
         apiFetch<{ rows: ReconciliationRow[] }>("/api/dashboard/reconciliation" + branchParam),
-        apiFetch<{ transactions: Transaction[] }>(
-          "/api/transactions" + (branchParam ? branchParam + "&limit=50" : "?limit=50")
-        ),
       ]);
       setSummary(summaryRes);
       setReconciliation(reconRes.rows);
-      setRecentTransactions(txnRes.transactions);
     } catch (err) {
       show(err instanceof ApiError ? err.message : "Could not load dashboard data", "error");
     }
@@ -96,20 +91,6 @@ export default function AdminDashboardPage() {
     branches.forEach((b) => (map[b._id] = b.branchName));
     return map;
   }, [branches]);
-
-  const feedTransactions = useMemo(() => {
-    const merged = new Map<string, Transaction>();
-    recentTransactions.forEach((t) => merged.set(t._id, t));
-    liveEvents.forEach((t) => merged.set(t._id, t));
-    return Array.from(merged.values())
-      .filter((t) => {
-        if (selectedBranchId === "ALL") return true;
-        const bId = typeof t.branchId === "string" ? t.branchId : t.branchId._id;
-        return bId === selectedBranchId;
-      })
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 50);
-  }, [recentTransactions, liveEvents, selectedBranchId]);
 
   if (!authChecked || !me) {
     return (
